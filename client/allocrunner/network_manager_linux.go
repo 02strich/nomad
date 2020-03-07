@@ -90,6 +90,7 @@ func newNetworkManager(alloc *structs.Allocation, driverManager drivermanager.Ma
 type defaultNetworkManager struct{}
 
 func (*defaultNetworkManager) CreateNetwork(allocID string) (*drivers.NetworkIsolationSpec, bool, error) {
+	fmt.Printf("NET CreateNetwork, allocID: %s\n", allocID)
 	netns, err := nsutil.NewNS(allocID)
 	if err != nil {
 		return nil, false, err
@@ -101,10 +102,13 @@ func (*defaultNetworkManager) CreateNetwork(allocID string) (*drivers.NetworkIso
 		Labels: make(map[string]string),
 	}
 
+	fmt.Printf("  netns.Path: %s\n", spec.Path)
+
 	return spec, true, nil
 }
 
 func (*defaultNetworkManager) DestroyNetwork(allocID string, spec *drivers.NetworkIsolationSpec) error {
+	fmt.Printf("NET DestroyNetwork, allocID: %s, path: %s\n", allocID, spec.Path)
 	return nsutil.UnmountNS(spec.Path)
 }
 
@@ -131,6 +135,7 @@ func newNetworkConfigurator(log hclog.Logger, alloc *structs.Allocation, config 
 
 	switch strings.ToLower(tg.Networks[0].Mode) {
 	case "bridge":
+		fmt.Printf("NET newNetworkConfigureator, bridge, BridgeNetworkName: %s, BridgeNetworkAllocSubnet: %s, CNIPath: %s\n", config.BridgeNetworkName, config.BridgeNetworkAllocSubnet, config.CNIPath)
 		return newBridgeNetworkConfigurator(log, config.BridgeNetworkName, config.BridgeNetworkAllocSubnet, config.CNIPath)
 	default:
 		return &hostNetworkConfigurator{}, nil

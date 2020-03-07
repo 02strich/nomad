@@ -86,8 +86,6 @@ func newBridgeNetworkConfigurator(log hclog.Logger, bridgeName, ipRange, cniPath
 
 // ensureForwardingRules ensures that a forwarding rule is added to iptables
 // to allow traffic inbound to the bridge network
-// // ensureForwardingRules ensures that a forwarding rule is added to iptables
-// to allow traffic inbound to the bridge network
 func (b *bridgeNetworkConfigurator) ensureForwardingRules() error {
 	ipt, err := iptables.New()
 	if err != nil {
@@ -107,6 +105,8 @@ func (b *bridgeNetworkConfigurator) ensureForwardingRules() error {
 
 // ensureChain ensures that the given chain exists, creating it if missing
 func ensureChain(ipt *iptables.IPTables, table, chain string) error {
+	fmt.Printf("NET ensureChain, table: %s, chain: %s\n", table, chain)
+
 	chains, err := ipt.ListChains(table)
 	if err != nil {
 		return fmt.Errorf("failed to list iptables chains: %v", err)
@@ -130,6 +130,8 @@ func ensureChain(ipt *iptables.IPTables, table, chain string) error {
 
 // ensureFirstChainRule ensures the given rule exists as the first rule in the chain
 func ensureFirstChainRule(ipt *iptables.IPTables, chain string, rule []string) error {
+	fmt.Printf("NET ensureFirstChainRule, chain: %s, rule: %v\n", chain, rule)
+
 	exists, err := ipt.Exists("filter", chain, rule...)
 	if !exists && err == nil {
 		// iptables rules are 1-indexed
@@ -154,9 +156,9 @@ func (b *bridgeNetworkConfigurator) Setup(ctx context.Context, alloc *structs.Al
 		return err
 	}
 
-	// Depending on the version of bridge cni plugin used, a known race could occure
+	// Depending on the version of bridge cni plugin (< 0.8.4) a known race could occur
 	// where two alloc attempt to create the nomad bridge at the same time, resulting
-	// in one of them to fail. This rety attempts to overcome any
+	// in one of them to fail. This retry attempts to overcome those erroneous failures.
 	const retry = 3
 	for attempt := 1; ; attempt++ {
 		//TODO eventually returning the IP from the result would be nice to have in the alloc

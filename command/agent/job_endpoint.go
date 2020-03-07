@@ -1078,9 +1078,12 @@ func ApiConsulConnectToStructs(in *api.ConsulConnect) *structs.ConsulConnect {
 
 		if in.SidecarService.Proxy != nil {
 
+			fmt.Printf("API set SidecarService.Proxy.LocalServiceAddress: %s, Port: %d\n", in.SidecarService.Proxy.LocalServiceAddress, in.SidecarService.Proxy.LocalServicePort)
+
 			out.SidecarService.Proxy = &structs.ConsulProxy{
 				LocalServiceAddress: in.SidecarService.Proxy.LocalServiceAddress,
 				LocalServicePort:    in.SidecarService.Proxy.LocalServicePort,
+				Expose:              structs.ExposeConfig{Checks: true}, // not configurable yet // TODO YOU ARE HERE
 				Config:              in.SidecarService.Proxy.Config,
 			}
 

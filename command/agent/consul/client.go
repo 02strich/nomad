@@ -820,6 +820,12 @@ func (c *ServiceClient) serviceRegs(ops *operations, service *structs.Service, w
 		return nil, fmt.Errorf("invalid Consul Connect configuration for service %q: %v", service.Name, err)
 	}
 
+	if connect == nil || connect.SidecarService == nil || connect.SidecarService.Proxy == nil {
+		fmt.Printf("SETH: newConnect - nil stuff\n")
+	} else {
+		fmt.Printf("SETH: newConnect, sanity check checks value %s, %t\n", connect.SidecarService.Name, connect.SidecarService.Proxy.Expose.Checks)
+	}
+
 	// Determine whether to use meta or canary_meta
 	var meta map[string]string
 	if workload.Canary && len(service.CanaryMeta) > 0 {
@@ -904,11 +910,13 @@ func (c *ServiceClient) checkRegs(ops *operations, serviceID string, service *st
 			return nil, fmt.Errorf("error getting address for check %q: %v", check.Name, err)
 		}
 
+		fmt.Printf("CON will createCheckReg, check.Name: %s, ip: %s, port: %d\n", check.Name, ip, port)
 		checkReg, err := createCheckReg(serviceID, checkID, check, ip, port)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add check %q: %v", check.Name, err)
 		}
 		ops.regChecks = append(ops.regChecks, checkReg)
+		fmt.Printf("CON appended checkReg: %s, http: %s\n", checkReg.Name, checkReg.HTTP)
 	}
 	return checkIDs, nil
 }
@@ -1267,6 +1275,8 @@ func MakeCheckID(serviceID string, check *structs.ServiceCheck) string {
 // Script checks simply have a TTL set and the caller is responsible for
 // running the script and heartbeating.
 func createCheckReg(serviceID, checkID string, check *structs.ServiceCheck, host string, port int) (*api.AgentCheckRegistration, error) {
+	fmt.Printf("CON createCheckReg, check.Name: %s, host: %s, port: %d\n", check.Name, host, port)
+
 	chkReg := api.AgentCheckRegistration{
 		ID:        checkID,
 		Name:      check.Name,
@@ -1298,10 +1308,11 @@ func createCheckReg(serviceID, checkID string, check *structs.ServiceCheck, host
 		if err != nil {
 			return nil, err
 		}
-		url := base.ResolveReference(relative)
-		chkReg.HTTP = url.String()
+		checkURL := base.ResolveReference(relative)
+		chkReg.HTTP = checkURL.String()
 		chkReg.Method = check.Method
 		chkReg.Header = check.Header
+		fmt.Printf("  -> checkURL: %s\n", checkURL)
 
 	case structs.ServiceCheckTCP:
 		chkReg.TCP = net.JoinHostPort(host, strconv.Itoa(port))
@@ -1483,12 +1494,14 @@ func newConnect(serviceName string, nc *structs.ConsulConnect, networks structs.
 	proxyConfig := map[string]interface{}{}
 	localServiceAddress := ""
 	localServicePort := 0
+	var exposeConfig api.ExposeConfig
 	if nc.SidecarService.Proxy != nil {
 		localServiceAddress = nc.SidecarService.Proxy.LocalServiceAddress
 		localServicePort = nc.SidecarService.Proxy.LocalServicePort
 		if nc.SidecarService.Proxy.Config != nil {
 			proxyConfig = nc.SidecarService.Proxy.Config
 		}
+		exposeConfig.Checks = nc.SidecarService.Proxy.Expose.Checks
 	}
 	proxyConfig["bind_address"] = "0.0.0.0"
 	proxyConfig["bind_port"] = port.To
@@ -1504,6 +1517,7 @@ func newConnect(serviceName string, nc *structs.ConsulConnect, networks structs.
 		Proxy: &api.AgentServiceConnectProxyConfig{
 			LocalServiceAddress: localServiceAddress,
 			LocalServicePort:    localServicePort,
+			Expose:              exposeConfig,
 			Config:              proxyConfig,
 		},
 	}

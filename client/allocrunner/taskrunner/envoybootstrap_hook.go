@@ -191,7 +191,8 @@ func buildEnvoyAdminBind(alloc *structs.Allocation, taskName string) string {
 			break
 		}
 	}
-	return fmt.Sprintf("localhost:%d", port)
+	// return fmt.Sprintf("localhost:%d", port)
+	return fmt.Sprintf("0.0.0.0:%d", port) // TODO flip this back!
 }
 
 func (h *envoyBootstrapHook) writeConfig(filename, config string) error {

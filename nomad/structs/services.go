@@ -841,7 +841,7 @@ type ConsulProxy struct {
 	// LocalServiceAddress is the address the local service binds to.
 	// Usually 127.0.0.1 it is useful to customize in clusters with mixed
 	// Connect and non-Connect services.
-	LocalServiceAddress string
+	LocalServiceAddress string // TODO SETH always gets defaulted to 127.0.0.1; que??
 
 	// LocalServicePort is the port the local service binds to. Usually
 	// the same as the parent service's port, it is useful to customize
@@ -851,6 +851,12 @@ type ConsulProxy struct {
 	// Upstreams configures the upstream services this service intends to
 	// connect to.
 	Upstreams []ConsulUpstream
+
+	// Expose configures the consul proxy.expose stanza to "open up" endpoints used
+	// by task-group level service checks using HTTP or gRPC protocols.
+	//
+	// todo(shoenig) notes about custom path proxying once that exists
+	Expose ExposeConfig
 
 	// Config is a proxy configuration. It is opaque to Nomad and passed
 	// directly to Consul.
@@ -863,9 +869,11 @@ func (p *ConsulProxy) Copy() *ConsulProxy {
 		return nil
 	}
 
-	newP := ConsulProxy{}
-	newP.LocalServiceAddress = p.LocalServiceAddress
-	newP.LocalServicePort = p.LocalServicePort
+	newP := &ConsulProxy{
+		LocalServiceAddress: p.LocalServiceAddress,
+		LocalServicePort:    p.LocalServicePort,
+		Expose:              p.Expose,
+	}
 
 	if n := len(p.Upstreams); n > 0 {
 		newP.Upstreams = make([]ConsulUpstream, n)
@@ -883,7 +891,7 @@ func (p *ConsulProxy) Copy() *ConsulProxy {
 		}
 	}
 
-	return &newP
+	return newP
 }
 
 // Equals returns true if the structs are recursively equal.
@@ -895,24 +903,16 @@ func (p *ConsulProxy) Equals(o *ConsulProxy) bool {
 	if p.LocalServiceAddress != o.LocalServiceAddress {
 		return false
 	}
+
 	if p.LocalServicePort != o.LocalServicePort {
 		return false
 	}
-	if len(p.Upstreams) != len(o.Upstreams) {
+
+	if !p.Expose.Equals(&o.Expose) {
 		return false
 	}
 
-	// Order doesn't matter
-OUTER:
-	for _, up := range p.Upstreams {
-		for _, innerUp := range o.Upstreams {
-			if up.Equals(&innerUp) {
-				// Match; find next upstream
-				continue OUTER
-			}
-		}
-
-		// No match
+	if !upstreamsEquals(p.Upstreams, o.Upstreams) {
 		return false
 	}
 
@@ -936,7 +936,24 @@ type ConsulUpstream struct {
 	LocalBindPort int
 }
 
-// Copy the stanza recursively. Returns nil if nil.
+func upstreamsEquals(a, b []ConsulUpstream) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+LOOP: // order does not matter
+	for _, upA := range a {
+		for _, upB := range b {
+			if upA.Equals(&upB) {
+				continue LOOP
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// Copy the stanza recursively. Returns nil if u is nil.
 func (u *ConsulUpstream) Copy() *ConsulUpstream {
 	if u == nil {
 		return nil
@@ -955,4 +972,56 @@ func (u *ConsulUpstream) Equals(o *ConsulUpstream) bool {
 	}
 
 	return (*u) == (*o)
+}
+
+// ExposeConfig represents a Consul Connect expose jobspec stanza.
+type ExposeConfig struct {
+	Paths []ExposePath
+	// todo(shoenig): maybe add 'checks', but requires some extra port magic
+}
+
+type ExposePath struct {
+	Path          string
+	Protocol      string
+	LocalPathPort string
+	ListenerPort  string
+}
+
+func exposePathsEqual(pathsA, pathsB []ExposePath) bool {
+	if len(pathsA) != len(pathsB) {
+		return false
+	}
+
+LOOP: // order does not matter
+	for _, pathA := range pathsA {
+		for _, pathB := range pathsB {
+			if pathA == pathB {
+				continue LOOP
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// Copy the stanza. Returns nil if e is nil.
+func (e *ExposeConfig) Copy() *ExposeConfig {
+	if e == nil {
+		return nil
+	}
+	paths := make([]ExposePath, len(e.Paths))
+	for i := 0; i < len(e.Paths); i++ {
+		paths[i] = e.Paths[i]
+	}
+	return &ExposeConfig{
+		Paths: paths,
+	}
+}
+
+// Equals returns true if the structs are recursively equal.
+func (e *ExposeConfig) Equals(o *ExposeConfig) bool {
+	if e == nil || o == nil {
+		return e == o
+	}
+	return exposePathsEqual(e.Paths, o.Paths)
 }
